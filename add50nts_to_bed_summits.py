@@ -1,6 +1,8 @@
 """
 This very little script takes a bed file (with the summit nucleotide position) and substract/add 50 nts to the start/end coordinate of the peak respectively)
 Usage: python add50nts_to_bed_summits.py [input_file] [output_file]
+[input file] should be your original file to modify
+[output_file] should be the file where you substract and add 50 nucleotides to the start and end coordinates of the Chip-Seq peak summit
 """
 import sys
 

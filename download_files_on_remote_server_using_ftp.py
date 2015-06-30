@@ -1,7 +1,9 @@
 from ftplib import FTP
 import os
+import glob
+import gzip
 
-directory_path_for_files = "/Users/mgalland/GoogleDrive/UvA_POSTDOC_2014-2017/data/rfam/"
+directory_path_for_downloaded_files = "/Users/mgalland/GoogleDrive/UvA_POSTDOC_2014-2017/data/rfam/"
 
 ftp = FTP("ftp.ebi.ac.uk") # use ftp protocol to connect to a distant ftp server
 ftp.login() # anonymous login
@@ -16,7 +18,7 @@ print "Here is the number of files available to download: {0}".format(len(filena
 
 # Iterate through all the filenames and retrieve them one by one:
 for filename in filenames:
-		local_filename = os.path.join(directory_path_for_files,filename) # open a local file for writing in binary mode
+		local_filename = os.path.join(directory_path_for_downloaded_files,filename) # open a local file for writing in binary mode
 		with open(local_filename,"wb") as fileout: # the "with" statement ensures that the file is closed at the end
 			def callback(data):
 				fileout.write(data)
@@ -25,4 +27,9 @@ for filename in filenames:
 	
 ftp.quit()
 
-# 
+# Unzip the .gz files
+for gunzip_file in glob.glob(directory_path_for_downloaded_files+"*.gz"):
+	with gzip.open(gunzip_file,"rb") as filin:
+		filin_content = filin.read()
+		with open(gunzip_file[:-3],"wb") as fileout:
+			fileout.write(filin_content)

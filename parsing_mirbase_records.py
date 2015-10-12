@@ -1,13 +1,20 @@
 """
-This script parses the hairpin and mature microRNAs from miRBase to keep only the Viridiplantae species microRNAs with
-the exception of Solanum lycopersicum.
-It then verifies that the non-redundant Viridiplantae miRNA sequences are not in the S.lycopersicum miRNA sequences.
+This script:
+1/ parses the hairpin and mature microRNAs from miRBase to keep only the Viridiplantae species microRNAs (with
+the exception of Solanum lycopersicum).
+2/ It collapses sequences to obtain non-redundant hairpin and mature microRNA sequences for Viridiplantae
+3/ It then verifies that the non-redundant Viridiplantae miRNA sequences are not in the S.lycopersicum miRNA sequences.
+4/
+5/ Build the subsquent 
+
+It 
 It subsequently builds the corresponding Bowtie2 indexes
 """
 
 
 import os
 import glob
+import re
 from subprocess import call
 from Bio.Seq import Seq, Alphabet, IUPAC
 from Bio import SeqIO
@@ -18,7 +25,7 @@ from Bio.SeqRecord import SeqRecord
 # Directory to output Bowtie2 index
 DIR = "/home/mgalland/data/02_refs/miRBase_v21/"
 
-# original miRBase files
+# original miRBase files (all microRNAs in miRBase)
 HAIRPIN = "hairpin.fa"
 MATURE = "mature.fa"
 
@@ -26,9 +33,14 @@ MATURE = "mature.fa"
 HAIRPIN_SLY = "sly_stemloop_mirbase_v21.fasta"
 MATURE_SLY = "sly_mature_mirbase_v21.fasta"
 
-# correspondence between organism short name and tree of life
+# correspondence between organism short name and phylogeny
 ORGANISMS = "organisms.txt"
 
+# final desired file for hairpin and mature miRNA file
+MATURE_FINAL = "sly_and_viridiplantae.mature.fa"
+HAIRPIN_FINAL = "sly_and_viridiplantae.hairpin.fa"
+
+ 
 ############### Utilities & functions #####################################
 # function to remove redundancy in fasta files
 def sequence_cleaner(fasta_file,min_length=0,por_n=100):
@@ -62,8 +74,12 @@ def sequence_cleaner(fasta_file,min_length=0,por_n=100):
 files = [HAIRPIN,MATURE]
 sly_files = [HAIRPIN_SLY,MATURE_SLY]
 
-# clean any left over files from previous BOWTIE2 index building
+# clean any left over files containing viridiplantae
 for f in glob.glob(DIR + "viridiplantae"):
+	os.remove(f)
+# search for files that matches Bowtie2 index + remove them
+bowtie_index_files = [f for f in os.listdir("./") if re.search("bt2$",f)] 
+for f in bowtie_index_files:
 	os.remove(f)
 
 # filter organisms to keep viridiplantae
@@ -76,6 +92,7 @@ with open(ORGANISMS,"r") as filin:
 # import global miRBase files
 # filter with Viridiplantae species that are not S.lycopersicum
 # convert to IUPACUnambiguousRNA and then back transcribe to DNA
+# remove sequence redundancy
 for f in files:
 	with open(f,"r") as filin, open(str(f.split(".")[0] + ".viridiplantae.wo_sly.fasta"),"w") as fileout:
 		records = []
@@ -89,11 +106,10 @@ for f in files:
 					pass
 		SeqIO.write(records,fileout,"fasta")
 
-# remove seq reduncancy
 for f in files:
 	sequence_cleaner(str(f.split(".")[0] + ".viridiplantae.wo_sly.fasta")) 
 
-# get mature and hairpin miRNA sequences for Solanum lycopersicum records in two lists
+# get mature and hairpin miRNA sequences for Solanum lycopersicum records in two lists (to filter them from Viridiplantae file)
 if len(sly_files) > 2:
 	print("check that you have only one mature miRNA and one precursor miRNA miRBase files for Solanum lycopersicum")
 else:
@@ -115,7 +131,7 @@ else:
 		else:
 			print("check that file name for Solanum lycopersicum contains 'mature' or 'hairpin/stemloop'")	
 
-# Compare mature and hairpin miRNA sequences for Viridiplantae (excluding Solanum lycopersicum) 
+# Collapse mature and hairpin miRNA sequences for Viridiplantae (excluding Solanum lycopersicum) 
 collapsed_files = [str("collapsed."+f.split(".")[0] + ".viridiplantae.wo_sly.fasta") for f in files if f.endswith(".fasta") or f.endswith(".fa")]
 collapsed_names = [f.split(".fasta")[0] for f in collapsed_files]
 
@@ -138,23 +154,22 @@ for i in list(range(0,len(collapsed_files),1)):
 				else:
 					records.append(record)
 			SeqIO.write(records,fileout,"fasta")
+
+# Concatenate Solanum lycopersicum miRBase and all other plant Viridiplantae species non-reundant miRBase records in two fasta files (hairpin + mature)
+collapsed_and_filtered_files = [collapsed_name + ".filtered.fasta" for collapsed_name in collapsed_names]
+
+final_files = [MATURE_FINAL,HAIRPIN_FINAL]
+
+for f in collapsed_and_filtered_files:
+	if "mature" in f:
+		call("cat " + MATURE_SLY + " " + f + " > " + MATURE_FINAL,shell=True)
+	if "hairpin" in f:
+		call("cat " + HAIRPIN_SLY + " " + f + " > " + HAIRPIN_FINAL,shell=True)
 				 
+
 # Create bowtie-2 indexes for viridiplantae
-for name in collapsed_names:
-	call("bowtie2-build" + " " + name + ".filtered.fasta" + " " +  name + ".filtered.fasta",shell=True)
+for f in final_files:
+	call("bowtie2-build --quiet" +  " " + f + " " + f,shell=True)
 
 
-# Create bowtie-2 indexes for Solanum lycopersicum
-for f in sly_files:
-	with open(f,"r") as filin, open(str(f.split(".")[0] + ".dna.fasta"),"w") as fileout:
-		records = []
-		for record in SeqIO.parse(filin,"fasta"):
-			record.seq = Seq(str(record.seq),IUPAC.unambiguous_rna)
-			record.seq = record.seq.back_transcribe()
-			records.append(record)
-		SeqIO.write(records,fileout,"fasta")
 
-sly_dna_files = [f for f in os.listdir(DIR) if "sly" and "dna.fasta" in f]
-
-for sly_dna_file in sly_dna_files:
-	call("bowtie2-build" + " " + sly_dna_file + " " + sly_dna_file,shell=True)

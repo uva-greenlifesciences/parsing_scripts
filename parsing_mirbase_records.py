@@ -4,11 +4,9 @@ This script:
 the exception of Solanum lycopersicum).
 2/ It collapses sequences to obtain non-redundant hairpin and mature microRNA sequences for Viridiplantae
 3/ It then verifies that the non-redundant Viridiplantae miRNA sequences are not in the S.lycopersicum miRNA sequences.
-4/
-5/ Build the subsquent 
-
-It 
-It subsequently builds the corresponding Bowtie2 indexes
+4/ 
+5/ Build the subsequent concatenated fasta file  
+6/ It subsequently builds the corresponding Bowtie2 indexes
 """
 
 
@@ -130,6 +128,15 @@ else:
 					sly_hairpin_seqs.append(str(record.seq))
 		else:
 			print("check that file name for Solanum lycopersicum contains 'mature' or 'hairpin/stemloop'")	
+# Reverse transcribe Solanum lycopersicum miRBase entries RNAs into DNAs
+for f in sly_files:
+	with open(f,"r") as filin, open(str(f.split(".")[0] + ".dna.fasta"),"w") as fileout:
+		records = []
+		for record in SeqIO.parse(filin,"fasta"):
+			record.seq = Seq(str(record.seq),IUPAC.unambiguous_rna)
+			record.seq = record.seq.back_transcribe()
+			records.append(record)
+		SeqIO.write(records,fileout,"fasta")
 
 # Collapse mature and hairpin miRNA sequences for Viridiplantae (excluding Solanum lycopersicum) 
 collapsed_files = [str("collapsed."+f.split(".")[0] + ".viridiplantae.wo_sly.fasta") for f in files if f.endswith(".fasta") or f.endswith(".fa")]
@@ -157,19 +164,17 @@ for i in list(range(0,len(collapsed_files),1)):
 
 # Concatenate Solanum lycopersicum miRBase and all other plant Viridiplantae species non-reundant miRBase records in two fasta files (hairpin + mature)
 collapsed_and_filtered_files = [collapsed_name + ".filtered.fasta" for collapsed_name in collapsed_names]
-
 final_files = [MATURE_FINAL,HAIRPIN_FINAL]
 
 for f in collapsed_and_filtered_files:
 	if "mature" in f:
-		call("cat " + MATURE_SLY + " " + f + " > " + MATURE_FINAL,shell=True)
+		call("cat " + MATURE_SLY.split(".")[0] + ".dna.fasta" + " " + f + " > " + MATURE_FINAL,shell=True)
 	if "hairpin" in f:
-		call("cat " + HAIRPIN_SLY + " " + f + " > " + HAIRPIN_FINAL,shell=True)
+		call("cat " + HAIRPIN_SLY.split(".")[0] + ".dna.fasta" + " " + f + " > " + HAIRPIN_FINAL,shell=True)
 				 
-
 # Create bowtie-2 indexes for viridiplantae
 for f in final_files:
-	call("bowtie2-build --quiet" +  " " + f + " " + f,shell=True)
+	call("bowtie2-build" +  " " + f + " " + f,shell=True)
 
 
 
